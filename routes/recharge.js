@@ -28,6 +28,12 @@ async function getAccessToken() {
 router.post('/', auth, async (req, res) => {
   const { receiverMsisdn, amount, servicePin } = req.body;
 
+  const generateTransactionId = () => {
+         const timestamp = Date.now().toString();     
+         const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();     
+         return `TXN${timestamp}${randomStr}`;   
+        };
+
   // Helper function to format phone numbers
   const formatPhoneNumber = (phone) => {
     // Remove any spaces, hyphens, or other characters
