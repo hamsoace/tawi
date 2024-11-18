@@ -28,17 +28,21 @@ async function getAccessToken() {
 router.post('/', auth, async (req, res) => {
   const { receiverMsisdn, amount, servicePin } = req.body;
 
-  const generateTransactionId = () => {
-    const timestamp = Date.now().toString();
-    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
-    return `TXN${timestamp}${randomStr}`;
+  // Helper function to format phone numbers
+  const formatPhoneNumber = (phone) => {
+    // Remove any spaces, hyphens, or other characters
+    let cleaned = phone.replace(/\D/g, '');
+    // Remove leading 0, +254, or 254
+    cleaned = cleaned.replace(/^(0|\+254|254)/, '');
+    // Add 254 prefix
+    return `254${cleaned}`;
   };
 
   // Validate required fields
   if (!receiverMsisdn || !amount || !servicePin) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Missing required fields' 
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields'
     });
   }
 
@@ -50,37 +54,37 @@ router.post('/', auth, async (req, res) => {
   }
 
   const phoneRegex = /^(?:254|\+254|0)?([7-9]\d{8})$/;
-    if (!phoneRegex.test(receiverMsisdn)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid receiver phone number format'
-      });
-    }
-
-    if (!phoneRegex.test(req.user.phone)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid sender phone number format'
-      });
-    }
-
-
-    const formattedReceiverMsisdn = receiverMsisdn.replace(/^(?:254|\+254|0)/, '');
-    const formattedSenderMsisdn = req.user.phone.replace(/^(?:254|\+254|0)/, '');
-
-    try {
-    const transactionId = generateTransactionId();
-
-  const token = await getAccessToken();
-
-  console.log('Request payload:', {
-    senderMsisdn: formattedSenderMsisdn,
-    receiverMsisdn: formattedReceiverMsisdn,
-    amount,
-    servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),
-  });
-
   
+  if (!phoneRegex.test(receiverMsisdn)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid receiver phone number format'
+    });
+  }
+
+  if (!phoneRegex.test(req.user.phone)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid sender phone number format'
+    });
+  }
+
+  // Format both phone numbers consistently
+  const formattedReceiverMsisdn = formatPhoneNumber(receiverMsisdn);
+  const formattedSenderMsisdn = formatPhoneNumber(req.user.phone);
+
+  try {
+    const transactionId = generateTransactionId();
+    const token = await getAccessToken();
+
+    // Log the exact payload being sent to Safaricom
+    console.log('Request payload:', {
+      senderMsisdn: formattedSenderMsisdn,
+      receiverMsisdn: formattedReceiverMsisdn,
+      amount,
+      servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),
+    });
+
     const response = await axios.post(
       `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
       {
@@ -97,11 +101,13 @@ router.post('/', auth, async (req, res) => {
       }
     );
 
+    // Log the response from Safaricom
+    console.log('Safaricom API Response:', response.data);
+
     const { data } = response;
     const { responseId, responseStatus, responseDesc } = data;
 
-
-    // Save to database first
+    // Save to database
     const recharge = new Recharge({
       senderMsisdn: formattedSenderMsisdn,
       receiverMsisdn: formattedReceiverMsisdn,
@@ -112,7 +118,6 @@ router.post('/', auth, async (req, res) => {
 
     await recharge.save();
 
-    // Then send response
     return res.json({
       success: true,
       responseId,
@@ -120,8 +125,16 @@ router.post('/', auth, async (req, res) => {
       transactionId,
       responseDesc,
     });
-
   } catch (err) {
+    // Enhanced error logging
+    console.error('Recharge error:', {
+      error: err.message,
+      response: err.response?.data,
+      status: err.response?.status,
+      senderMsisdn: formattedSenderMsisdn,
+      receiverMsisdn: formattedReceiverMsisdn
+    });
+
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -139,17 +152,13 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
-    // Generic error
-    console.error('Recharge error:', err);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
       details: err.message
     });
   }
-  
 });
-
 
 router.get('/statistics', auth, async (req, res) => {
   try {
