@@ -79,7 +79,7 @@ router.post('/', auth, async (req, res) => {
 
     // Log the exact payload being sent to Safaricom
     console.log('Request payload:', {
-      senderMsisdn: formattedSenderMsisdn,
+      senderMsisdn: req.user.formatPhoneNumber,
       receiverMsisdn: formattedReceiverMsisdn,
       amount,
       servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),
@@ -88,7 +88,7 @@ router.post('/', auth, async (req, res) => {
     const response = await axios.post(
       `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
       {
-        senderMsisdn: formattedSenderMsisdn,
+        senderMsisdn: req.user.formatPhoneNumber,
         receiverMsisdn: formattedReceiverMsisdn,
         amount,
         servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),

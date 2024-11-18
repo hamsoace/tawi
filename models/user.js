@@ -29,5 +29,18 @@ userSchema.methods.comparePin = async function(candidatePin) {
   return bcrypt.compare(candidatePin, this.pin);
 };
 
+// Add a helper method to the User schema for phone number formatting
+userSchema.methods.getFormattedPhone = function(format = 'basic') {
+  switch (format) {
+    case 'safaricom':
+      return `254${this.phone}`;
+    case 'kenya':
+      return `0${this.phone}`;
+    case 'international':
+      return `+254${this.phone}`;
+    default:
+      return this.phone;
+  }
+};
 
 module.exports = mongoose.model('User', userSchema);

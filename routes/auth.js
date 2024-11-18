@@ -9,15 +9,39 @@ router.post('/login', async (req, res) => {
   const { phone, pin } = req.body;
 
   try {
-    if (!phone || !pin){
+    if (!phone || !pin) {
       return res.status(400).json({
         success: false,
         error: 'Phone and PIN are required'
       });
     }
-    const formattedPhone = phone.replace(/^(0|\+254|254)/, '');
-    const user = await User.findOne({ phone });
+
+    // Normalize phone number by removing any non-digit characters and prefix
+    const normalizePhone = (phoneNumber) => {
+      // Remove any non-digit characters
+      let cleaned = phoneNumber.replace(/\D/g, '');
+      // Remove leading 0, +254, or 254
+      cleaned = cleaned.replace(/^(0|\+254|254)/, '');
+      return cleaned;
+    };
+
+    const normalizedInputPhone = normalizePhone(phone);
+
+    // Find user with any variation of the phone number
+    const user = await User.findOne({
+      $or: [
+        { phone: normalizedInputPhone },
+        { phone: `0${normalizedInputPhone}` },
+        { phone: `254${normalizedInputPhone}` },
+        { phone: `+254${normalizedInputPhone}` }
+      ]
+    });
+
     if (!user) {
+      console.log('No user found for phone variations:', {
+        normalized: normalizedInputPhone,
+        original: phone
+      });
       return res.status(401).json({
         success: false,
         error: 'Invalid phone or PIN'
@@ -32,10 +56,14 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Use getFormattedPhone to store the safaricom format in the token
+    const formattedPhone = user.getFormattedPhone('safaricom');
+
     const token = jwt.sign(
-      { userId: user._id,
-        phone: user.formattedPhone
-       },
+      { 
+        userId: user._id,
+        phone: formattedPhone  // Store the Safaricom format (254...)
+      },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
@@ -44,69 +72,94 @@ router.post('/login', async (req, res) => {
       success: true,
       token,
       user: {
-        phone: user.phone
+        phone: formattedPhone
       }
     });
 
   } catch (err) {
     console.error('Login error:', err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Error logging in' 
+      error: 'Error logging in'
     });
   }
 });
 
 router.post('/register', async (req, res) => {
+  try {
     const { phone, pin } = req.body;
-  
-    try {
-      if (!phone || !pin) {
-        return res.status(400).json({
-          success: false,
-          error: 'Phone and PIN are required'
-        });
-      }
 
-      if (!/^\d{4}$/.test(pin)) {
-        return res.status(400).json({
-          success: false,
-          error: 'PIN must be 4 digits'
-        });
-      }
-
-      const existingUser = await User.findOne({ phone });
-      if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          error: 'Phone number already registered'
-        });
-      }
-
-      const user = new User({ phone, pin });
-      await user.save();
-
-      const token = jwt.sign(
-        { userId: user._id,
-          phone: user.phone
-         },
-        process.env.JWT_SECRET,
-        { expiresIn: '1h' }
-      );
-
-      res.status(201).json({
-        success:true,
-        token,
-        user: {
-          phone: user.phone
-        }
+    if (!phone || !pin) {
+      return res.status(400).json({
+        success: false,
+        error: 'Phone and PIN are required'
       });
-
-    } catch (err) {
-      console.error('Error registering user:', err);
-      res.status(500).json({ success: false, error: 'Error registering user' });
     }
-  });
+
+    // Normalize phone number
+    const normalizePhone = (phoneNumber) => {
+      let cleaned = phoneNumber.replace(/\D/g, '');
+      cleaned = cleaned.replace(/^(0|\+254|254)/, '');
+      return cleaned;
+    };
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [
+        { phone: normalizedPhone },
+        { phone: `0${normalizedPhone}` },
+        { phone: `254${normalizedPhone}` },
+        { phone: `+254${normalizedPhone}` }
+      ]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'User already exists with this phone number'
+      });
+    }
+
+    // Create new user with normalized phone
+    const user = new User({
+      phone: normalizedPhone,
+      pin
+    });
+
+    await user.save();
+
+    // Use getFormattedPhone to get the Safaricom format
+    const formattedPhone = user.getFormattedPhone('safaricom');
+
+    // Create token with formatted phone
+    const token = jwt.sign(
+      { 
+        userId: user._id,
+        phone: formattedPhone
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      token,
+      user: {
+        phone: formattedPhone
+      }
+    });
+
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Error registering user'
+    });
+  }
+});
 
 router.post('/change-pin', auth, async (req, res) => {
   const { currentPin, newPin } = req.body;
