@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
         error: 'Phone and PIN are required'
       });
     }
-
+    const formattedPhone = phone.replace(/^(0|\+254|254)/, '');
     const user = await User.findOne({ phone });
     if (!user) {
       return res.status(401).json({
@@ -34,7 +34,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { userId: user._id,
-        phone: user.phone
+        phone: user.formattedPhone
        },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
