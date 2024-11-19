@@ -85,7 +85,7 @@ router.post('/', auth, async (req, res) => {
 
     // Log the exact payload being sent to Safaricom
     console.log('Request payload:', {
-      senderMsisdn: req.user.formatPhoneNumber,
+      senderMsisdn: formattedSenderMsisdn,
       receiverMsisdn: formattedReceiverMsisdn,
       amount,
       servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),
