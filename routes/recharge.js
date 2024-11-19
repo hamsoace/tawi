@@ -94,7 +94,7 @@ router.post('/', auth, async (req, res) => {
     const response = await axios.post(
       `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
       {
-        senderMsisdn: req.user.formatPhoneNumber,
+        senderMsisdn: formattedSenderMsisdn,
         receiverMsisdn: formattedReceiverMsisdn,
         amount,
         servicePin: Buffer.from(servicePin, 'utf8').toString('base64'),
