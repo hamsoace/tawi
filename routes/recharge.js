@@ -2,6 +2,8 @@ const express = require('express');
 const axios = require('axios');
 const auth = require('../middleware/auth');
 const Recharge = require('../models/recharge');
+const multer = require('multer');
+const path = require('path');
 
 const router = express.Router();
 
@@ -24,6 +26,17 @@ async function getAccessToken() {
     throw error;
   }
 }
+
+const upload = multer({
+  dest: 'uploads/',
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext != '.csv') {
+      return cb(new Error('Only CSV files are allowed'), false);
+    }
+    cb(null, true);
+  }
+})
 
 router.post('/', auth, async (req, res) => {
   const { receiverMsisdn, amount, servicePin } = req.body;
@@ -162,6 +175,128 @@ router.post('/', auth, async (req, res) => {
       success: false,
       error: 'Internal server error',
       details: err.message
+    });
+  }
+});
+
+router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) => {
+  const generateTransactionId = () => {
+    const timestamp = Date.now().toString();     
+    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();     
+    return `TXN${timestamp}${randomStr}`;   
+   };
+   
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No CSV file uploaded'
+    });
+  }
+
+  const results = [];
+  const errors = [];
+
+  try {
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', async (data) => {
+          // Validate required fields in each row
+          if (!data.receiverMsisdn || !data.amount) {
+            errors.push({
+              row: data,
+              error: 'Missing receiverMsisdn or amount'
+            });
+            return;
+          }
+
+          try {
+            // Format phone number
+            const formattedReceiverMsisdn = formatPhoneNumber(data.receiverMsisdn);
+            
+            // Generate transaction ID for each transaction
+            const transactionId = generateTransactionId();
+            
+            // Get access token
+            const token = await getAccessToken();
+
+            // Perform recharge for each row
+            const response = await axios.post(
+              `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
+              {
+                senderMsisdn: formatPhoneNumber(req.user.phone),
+                receiverMsisdn: formattedReceiverMsisdn,
+                amount: data.amount,
+                servicePin: Buffer.from(req.body.servicePin, 'utf8').toString('base64'),
+              },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                },
+              }
+            );
+
+            // Save recharge to database
+            const recharge = new Recharge({
+              senderMsisdn: formatPhoneNumber(req.user.phone),
+              receiverMsisdn: formattedReceiverMsisdn,
+              amount: data.amount,
+              transactionId: transactionId,
+              status: response.data.responseStatus
+            });
+
+            await recharge.save();
+
+            results.push({
+              receiverMsisdn: formattedReceiverMsisdn,
+              amount: data.amount,
+              transactionId: transactionId,
+              status: response.data.responseStatus,
+              responseDesc: response.data.responseDesc
+            });
+          } catch (error) {
+            errors.push({
+              receiverMsisdn: data.receiverMsisdn,
+              amount: data.amount,
+              error: error.message,
+              details: error.response?.data
+            });
+          }
+        })
+        .on('end', () => {
+          // Remove the uploaded file
+          fs.unlinkSync(req.file.path);
+          resolve();
+        })
+        .on('error', (err) => {
+          // Remove the uploaded file
+          fs.unlinkSync(req.file.path);
+          reject(err);
+        });
+    });
+
+    // Prepare response
+    res.json({
+      success: true,
+      totalProcessed: results.length + errors.length,
+      successfulTransactions: results.length,
+      failedTransactions: errors.length,
+      results,
+      errors
+    });
+
+  } catch (error) {
+    // Remove the uploaded file if an error occurs
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    console.error('Bulk recharge error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error processing bulk recharge',
+      details: error.message
     });
   }
 });
