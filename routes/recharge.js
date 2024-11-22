@@ -4,6 +4,8 @@ const auth = require('../middleware/auth');
 const Recharge = require('../models/recharge');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const csv = require('csv-parser');
 
 const router = express.Router();
 
@@ -208,8 +210,13 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
   try {
     await new Promise((resolve, reject) => {
       fs.createReadStream(req.file.path)
-        .pipe(csv())
+        .pipe(csv({
+          headers: ['receiverMsisdn', 'amount'],
+          skipLines: 0
+        }))
         .on('data', async (data) => {
+
+          console.log('Parsed CSV Row:', data);
           // Validate required fields in each row
           if (!data.receiverMsisdn || !data.amount) {
             errors.push({
