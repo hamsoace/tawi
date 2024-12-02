@@ -13,7 +13,7 @@ async function getAccessToken() {
   const { CONSUMER_KEY, CONSUMER_SECRET, SAFARICOM_API_URL } = process.env;
   const url = `${SAFARICOM_API_URL}/oauth2/v1/generate?grant_type=client_credentials`;
   
-  const credentials = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString('base64');
+  const credentials = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`, 'utf8').toString('base64');
   
   try {
     const response = await axios.post(url, null, {
@@ -22,9 +22,15 @@ async function getAccessToken() {
         'Content-Type': 'application/json',
       },
     });
+    console.log('Access Token Response:', response.data);
     return response.data.access_token;
   } catch (error) {
-    console.error('Error generating access token:', error);
+    console.error('Detailed Access Token Error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+      headers: error.config?.headers
+    });
     throw error;
   }
 }
