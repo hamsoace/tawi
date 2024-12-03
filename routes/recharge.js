@@ -188,6 +188,12 @@ router.post('/', auth, async (req, res) => {
 });
 
 router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) => {
+  const generateTransactionId = () => {
+    const timestamp = Date.now().toString();     
+    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();     
+    return `TXN${timestamp}${randomStr}`;   
+   };
+   
   if (!req.file) {
     return res.status(400).json({ success: false, error: 'No CSV file uploaded' });
   }
