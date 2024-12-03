@@ -188,26 +188,12 @@ router.post('/', auth, async (req, res) => {
 });
 
 router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) => {
-  const generateTransactionId = () => {
-    const timestamp = Date.now().toString();     
-    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();     
-    return `TXN${timestamp}${randomStr}`;   
-   };
-
-   const formatPhoneNumber = (phone) => {
-    // Remove any spaces, hyphens, or other characters
-    let cleaned = phone.replace(/\D/g, '');
-    // Remove leading 0, +254, or 254
-    cleaned = cleaned.replace(/^(0|\+254|254)/, '');
-    // Add 254 prefix
-    return `254${cleaned}`;
-  };
-
   if (!req.file) {
-    return res.status(400).json({
-      success: false,
-      error: 'No CSV file uploaded'
-    });
+    return res.status(400).json({ success: false, error: 'No CSV file uploaded' });
+  }
+
+  if (!req.body.servicePin || req.body.servicePin.length !== 4 || !/^\d{4}$/.test(req.body.servicePin)) {
+    return res.status(400).json({ success: false, error: 'Invalid service PIN' });
   }
 
   const results = [];
@@ -216,35 +202,18 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
   try {
     await new Promise((resolve, reject) => {
       fs.createReadStream(req.file.path)
-        .pipe(csv({
-          headers: ['receiverMsisdn', 'amount'],
-          skipLines: 0
-        }))
+        .pipe(csv({ headers: ['receiverMsisdn', 'amount'], skipLines: 0 }))
         .on('data', async (data) => {
-
-          console.log('Parsed CSV Row:', data);
-          // Validate required fields in each row
-          if (!data.receiverMsisdn || !data.amount) {
-            errors.push({
-              row: data,
-              error: 'Missing receiverMsisdn or amount'
-            });
+          if (!data.receiverMsisdn || isNaN(data.amount) || Number(data.amount) <= 0) {
+            errors.push({ row: data, error: 'Invalid receiverMsisdn or amount' });
             return;
           }
 
           try {
-            // Format phone number
             const formattedReceiverMsisdn = formatPhoneNumber(data.receiverMsisdn);
-            
-            // Generate transaction ID for each transaction
             const transactionId = generateTransactionId();
-            
-            // Get access token
             const token = await getAccessToken();
 
-
-
-            // Perform recharge for each row
             const response = await axios.post(
               `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
               {
@@ -253,24 +222,8 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
                 amount: data.amount,
                 servicePin: Buffer.from(req.body.servicePin, 'utf8').toString('base64'),
               },
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`,
-                },
-              }
+              { headers: { 'Authorization': `Bearer ${token}` } }
             );
-
-            // Save recharge to database
-            const recharge = new Recharge({
-              senderMsisdn: formatPhoneNumber(req.user.phone),
-              receiverMsisdn: formattedReceiverMsisdn,
-              amount: data.amount,
-              transactionId: transactionId,
-              status: response.data.responseStatus
-            });
-
-            await recharge.save();
 
             results.push({
               receiverMsisdn: formattedReceiverMsisdn,
@@ -279,13 +232,6 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
               status: response.data.responseStatus,
               responseDesc: response.data.responseDesc
             });
-
-            if (!req.body.servicePin || req.body.servicePin.length !== 4) {
-              return res.status(400).json({
-                success: false,
-                error: 'Invalid service PIN'
-              });
-            }
           } catch (error) {
             errors.push({
               receiverMsisdn: data.receiverMsisdn,
@@ -295,19 +241,12 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
             });
           }
         })
-        .on('end', () => {
-          // Remove the uploaded file
-          fs.unlinkSync(req.file.path);
-          resolve();
-        })
-        .on('error', (err) => {
-          // Remove the uploaded file
-          fs.unlinkSync(req.file.path);
-          reject(err);
-        });
+        .on('end', resolve)
+        .on('error', reject);
     });
 
-    // Prepare response
+    fs.unlinkSync(req.file.path);
+
     res.json({
       success: true,
       totalProcessed: results.length + errors.length,
@@ -318,19 +257,11 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
     });
 
   } catch (error) {
-    // Remove the uploaded file if an error occurs
-    if (req.file) {
-      fs.unlinkSync(req.file.path);
-    }
-
-    console.error('Bulk recharge error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Error processing bulk recharge',
-      details: error.message
-    });
+    if (req.file) fs.unlinkSync(req.file.path);
+    res.status(500).json({ success: false, error: 'Error processing bulk recharge', details: error.message });
   }
 });
+
 
 router.get('/statistics', auth, async (req, res) => {
   try {
