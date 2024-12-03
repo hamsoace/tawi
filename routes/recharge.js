@@ -196,6 +196,15 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
     return res.status(400).json({ success: false, error: 'Invalid service PIN' });
   }
 
+  const formatPhoneNumber = (phone) => {
+    // Remove any spaces, hyphens, or other characters
+    let cleaned = phone.replace(/\D/g, '');
+    // Remove leading 0, +254, or 254
+    cleaned = cleaned.replace(/^(0|\+254|254)/, '');
+    // Add 254 prefix
+    return `254${cleaned}`;
+  };
+
   const results = [];
   const errors = [];
 
