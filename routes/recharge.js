@@ -242,6 +242,8 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
             // Get access token
             const token = await getAccessToken();
 
+
+
             // Perform recharge for each row
             const response = await axios.post(
               `${process.env.SAFARICOM_API_URL}/v1/pretups/api/recharge`,
@@ -277,6 +279,13 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
               status: response.data.responseStatus,
               responseDesc: response.data.responseDesc
             });
+
+            if (!req.body.servicePin || req.body.servicePin.length !== 4) {
+              return res.status(400).json({
+                success: false,
+                error: 'Invalid service PIN'
+              });
+            }
           } catch (error) {
             errors.push({
               receiverMsisdn: data.receiverMsisdn,
