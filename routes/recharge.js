@@ -203,11 +203,8 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
   }
 
   const formatPhoneNumber = (phone) => {
-    // Remove any spaces, hyphens, or other characters
     let cleaned = phone.replace(/\D/g, '');
-    // Remove leading 0, +254, or 254
     cleaned = cleaned.replace(/^(0|\+254|254)/, '');
-    // Add 254 prefix
     return `254${cleaned}`;
   };
 
@@ -219,8 +216,14 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
       fs.createReadStream(req.file.path)
         .pipe(csv({ headers: ['receiverMsisdn', 'amount'], skipLines: 0 }))
         .on('data', async (data) => {
+          // Validate each row
           if (!data.receiverMsisdn || isNaN(data.amount) || Number(data.amount) <= 0) {
-            errors.push({ row: data, error: 'Invalid receiverMsisdn or amount' });
+            errors.push({
+              row: data,
+              error: !data.receiverMsisdn ? 'Missing receiverMsisdn' :
+                     isNaN(data.amount) || Number(data.amount) <= 0 ? 'Invalid amount' :
+                     'Unknown error'
+            });
             return;
           }
 
@@ -249,6 +252,7 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
             });
           } catch (error) {
             errors.push({
+              row: data,
               receiverMsisdn: data.receiverMsisdn,
               amount: data.amount,
               error: error.message,
@@ -276,6 +280,7 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
     res.status(500).json({ success: false, error: 'Error processing bulk recharge', details: error.message });
   }
 });
+
 
 
 router.get('/statistics', auth, async (req, res) => {
