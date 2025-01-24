@@ -88,7 +88,7 @@ router.post('/login', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { username, phone, pin, userType } = req.body;
-
+    
     // Validate input
     if (!username || !phone || !pin || !userType) {
       return res.status(400).json({
@@ -120,8 +120,9 @@ router.post('/register', async (req, res) => {
     }
 
     // Role-based registration validation
-    // Assuming the requester's role is passed in the JWT token
-    const requesterRole = req.user.role; // From authentication middleware
+    // If no token is provided, set a default role (initial registration)
+    const requesterRole = req.user?.role || 'admin';
+
     const allowedRoles = {
       admin: ['admin', 'branchManager', 'dsa', 'retailer'],
       branchManager: ['dsa', 'retailer'],
@@ -147,7 +148,7 @@ router.post('/register', async (req, res) => {
 
     // Create token
     const token = jwt.sign(
-      { 
+      {
         userId: user._id,
         phone: user.getFormattedPhone('safaricom'),
         role: userType
