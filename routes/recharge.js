@@ -6,8 +6,17 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parser');
+const AfricasTalking = require('africastalking');
 
 const router = express.Router();
+
+const africasTalking = AfricasTalking({
+  apiKey: process.env.AT_API_KEY,
+  username: process.env.AT_USERNAME || 'sandbox'
+});
+
+const airtime = africasTalking.AIRTIME;
+
 
 async function getAccessToken() {
   const { CONSUMER_KEY, CONSUMER_SECRET, SAFARICOM_API_URL } = process.env;
@@ -425,5 +434,107 @@ router.get('/transactions', auth, async (req, res) => {
   }
 });
 
+
+// Add this new route to your existing router
+router.post('/airtime', auth, async (req, res) => {
+  const { receiverMsisdn, amount, currencyCode = 'KES' } = req.body;
+
+  // Reuse your existing phone number formatting function
+  const formatPhoneNumber = (phone) => {
+      let cleaned = phone.replace(/\D/g, '');
+      cleaned = cleaned.replace(/^(0|\+254|254)/, '');
+      return `254${cleaned}`;
+  };
+
+  // Validate required fields
+  if (!receiverMsisdn || !amount) {
+      return res.status(400).json({
+          success: false,
+          error: 'Missing required fields'
+      });
+  }
+
+  // Reuse your existing phone validation regex
+  const phoneRegex = /^(?:254|\+254|0)?([7-9]\d{8})$/;
+  
+  if (!phoneRegex.test(receiverMsisdn)) {
+      return res.status(400).json({
+          success: false,
+          error: 'Invalid receiver phone number format'
+      });
+  }
+
+  try {
+      const formattedReceiverMsisdn = formatPhoneNumber(receiverMsisdn);
+      const transactionId = generateTransactionId(); // Reuse your existing function
+
+      const options = {
+          recipients: [{
+              phoneNumber: formattedReceiverMsisdn,
+              amount,
+              currencyCode
+          }]
+      };
+
+      // Send airtime and get response
+      const response = await airtime.send(options);
+      
+      // Log the response
+      console.log('Africa\'s Talking API Response:', response);
+
+      // Save to database using your existing Recharge model
+      const recharge = new Recharge({
+          senderMsisdn: req.user.phone, // Assuming this comes from auth
+          receiverMsisdn: formattedReceiverMsisdn,
+          amount: amount,
+          transactionId: transactionId,
+          status: response.responses[0].status === "Success" ? "200" : "400",
+          provider: 'AfricasTalking' // Add this field to your schema if needed
+      });
+
+      await recharge.save();
+
+      return res.json({
+          success: true,
+          responseId: response.responses[0].phoneNumber,
+          responseStatus: response.responses[0].status,
+          transactionId,
+          responseDesc: response.responses[0].errorMessage || 'Success',
+          details: response
+      });
+
+  } catch (err) {
+      // Enhanced error logging (following your existing pattern)
+      console.error('Airtime recharge error:', {
+          error: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+          receiverMsisdn
+      });
+
+      if (err.name === 'ValidationError') {
+          return res.status(400).json({
+              success: false,
+              error: 'Validation error',
+              details: err.message
+          });
+      }
+
+      // Check if it's an Africa's Talking API error
+      if (err.response?.data) {
+          return res.status(err.response.status || 500).json({
+              success: false,
+              error: 'Africa\'s Talking API error',
+              details: err.response.data
+          });
+      }
+
+      return res.status(500).json({
+          success: false,
+          error: 'Internal server error',
+          details: err.message
+      });
+  }
+});
 
 module.exports = router;
