@@ -62,7 +62,8 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { 
         userId: user._id,
-        phone: formattedPhone  // Store the Safaricom format (254...)
+        phone: formattedPhone,  // Store the Safaricom format (254...)
+        role: user.role
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
