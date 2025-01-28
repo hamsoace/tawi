@@ -12,39 +12,31 @@ router.post('/login', async (req, res) => {
     if (!phone || !pin) {
       return res.status(400).json({
         success: false,
-        error: 'Phone and PIN are required'
+        error: 'Phone and PIN are required',
       });
     }
 
-    // Normalize phone number by removing any non-digit characters and prefix
     const normalizePhone = (phoneNumber) => {
-      // Remove any non-digit characters
       let cleaned = phoneNumber.replace(/\D/g, '');
-      // Remove leading 0, +254, or 254
       cleaned = cleaned.replace(/^(0|\+254|254)/, '');
       return cleaned;
     };
 
     const normalizedInputPhone = normalizePhone(phone);
 
-    // Find user with any variation of the phone number
     const user = await User.findOne({
       $or: [
         { phone: normalizedInputPhone },
         { phone: `0${normalizedInputPhone}` },
         { phone: `254${normalizedInputPhone}` },
-        { phone: `+254${normalizedInputPhone}` }
-      ]
+        { phone: `+254${normalizedInputPhone}` },
+      ],
     });
 
     if (!user) {
-      console.log('No user found for phone variations:', {
-        normalized: normalizedInputPhone,
-        original: phone
-      });
       return res.status(401).json({
         success: false,
-        error: 'Invalid phone or PIN'
+        error: 'Invalid phone or PIN',
       });
     }
 
@@ -52,36 +44,32 @@ router.post('/login', async (req, res) => {
     if (!isValidPin) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid phone or PIN'
+        error: 'Invalid phone or PIN',
       });
     }
 
-    // Use getFormattedPhone to store the safaricom format in the token
-    const formattedPhone = user.getFormattedPhone('safaricom');
-
     const token = jwt.sign(
-      { 
+      {
         userId: user._id,
-        phone: formattedPhone,  // Store the Safaricom format (254...)
-        role: user.role
+        phone: user.phone,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
       token,
       user: {
-        phone: formattedPhone
-      }
+        phone: user.phone,
+      },
     });
-
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({
       success: false,
-      error: 'Error logging in'
+      error: 'Error logging in',
     });
   }
 });
@@ -89,16 +77,14 @@ router.post('/login', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { username, phone, pin, userType } = req.body;
-    
-    // Validate input
+
     if (!username || !phone || !pin || !userType) {
       return res.status(400).json({
         success: false,
-        error: 'Username, phone, PIN, and user type are required'
+        error: 'Username, phone, PIN, and user type are required',
       });
     }
 
-    // Normalize phone number
     const normalizePhone = (phoneNumber) => {
       let cleaned = phoneNumber.replace(/\D/g, '');
       cleaned = cleaned.replace(/^(0|\+254|254)/, '');
@@ -106,53 +92,45 @@ router.post('/register', async (req, res) => {
     };
     const normalizedPhone = normalizePhone(phone);
 
-    // Check if user already exists
     const existingUser = await User.findOne({
-      $or: [
-        { phone: normalizedPhone },
-        { username: username }
-      ]
+      $or: [{ phone: normalizedPhone }, { username: username }],
     });
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: 'User already exists with this phone number or username'
+        error: 'User already exists with this phone number or username',
       });
     }
 
-    // Role-based registration validation
-    // If no token is provided, set a default role (initial registration)
     const requesterRole = req.user?.role || 'admin';
 
     const allowedRoles = {
       admin: ['admin', 'branchManager', 'dsa', 'retailer'],
       branchManager: ['dsa', 'retailer'],
       dsa: ['retailer'],
-      retailer: []
+      retailer: [],
     };
 
     if (!allowedRoles[requesterRole]?.includes(userType)) {
       return res.status(403).json({
         success: false,
-        error: 'Not authorized to register this user type'
+        error: 'Not authorized to register this user type',
       });
     }
 
-    // Create new user
     const user = new User({
       username,
       phone: normalizedPhone,
       pin,
-      userType
+      userType,
     });
     await user.save();
 
-    // Create token
     const token = jwt.sign(
       {
         userId: user._id,
-        phone: user.getFormattedPhone('safaricom'),
-        role: userType
+        phone: user.phone,
+        role: userType,
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
@@ -164,15 +142,15 @@ router.post('/register', async (req, res) => {
       token,
       user: {
         username: user.username,
-        phone: user.getFormattedPhone('safaricom'),
-        userType: user.userType
-      }
+        phone: user.phone,
+        userType: user.userType,
+      },
     });
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({
       success: false,
-      error: 'Error registering user'
+      error: 'Error registering user',
     });
   }
 });
