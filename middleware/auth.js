@@ -21,7 +21,7 @@ const auth = async (req, res, next) => {
     req.user = {
       ...user.toObject(),
       formattedPhone: user.getFormattedPhone('safaricom'),
-      role: user.role,
+      role: user.userType,
     };
     
     next();
