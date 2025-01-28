@@ -20,7 +20,8 @@ const auth = async (req, res, next) => {
     // Add formatted phone number to the user object
     req.user = {
       ...user.toObject(),
-      formattedPhone: user.getFormattedPhone('safaricom')
+      formattedPhone: user.getFormattedPhone('safaricom'),
+      role: decoded.role,
     };
     
     next();
