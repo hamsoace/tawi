@@ -476,39 +476,64 @@ router.post('/airtime', auth, async (req, res) => {
           }]
       };
 
+      // Send airtime and get response
       const response = await airtime.send(options);
-  console.log('Africa\'s Talking Response:', response);
+      
+      // Log the response
+      console.log('Africa\'s Talking API Response:', response);
 
-  // Save to database
-  const recharge = new Recharge({
-    senderMsisdn: req.user.phone,
-    receiverMsisdn: formattedReceiverMsisdn,
-    amount,
-    transactionId,
-    status: response.responses[0].status === "Success" ? "200" : "400",
-    provider: 'AfricasTalking'
-  });
+      // Save to database using your existing Recharge model
+      const recharge = new Recharge({
+          senderMsisdn: req.user.phone, // Assuming this comes from auth
+          receiverMsisdn: formattedReceiverMsisdn,
+          amount: amount,
+          transactionId: transactionId,
+          status: response.responses[0].status === "Success" ? "200" : "400",
+          provider: 'AfricasTalking' // Add this field to your schema if needed
+      });
 
-  await recharge.save();
-  return res.json({
-    success: true,
-    responseId: response.responses[0].phoneNumber,
-    responseStatus: response.responses[0].status,
-    transactionId,
-    responseDesc: response.responses[0].errorMessage || 'Success',
-    details: response
-  });
+      await recharge.save();
 
-} catch (err) {
-  console.error('Error occurred during airtime recharge:', err);
-  if (err.response?.data) {
-    console.error('Africa\'s Talking API error response:', err.response.data);
-  }
-  return res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-    details: err.message || 'An error occurred'
-  });
+      return res.json({
+          success: true,
+          responseId: response.responses[0].phoneNumber,
+          responseStatus: response.responses[0].status,
+          transactionId,
+          responseDesc: response.responses[0].errorMessage || 'Success',
+          details: response
+      });
+
+  } catch (err) {
+      // Enhanced error logging (following your existing pattern)
+      console.error('Airtime recharge error:', {
+          error: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+          receiverMsisdn
+      });
+
+      if (err.name === 'ValidationError') {
+          return res.status(400).json({
+              success: false,
+              error: 'Validation error',
+              details: err.message
+          });
+      }
+
+      // Check if it's an Africa's Talking API error
+      if (err.response?.data) {
+          return res.status(err.response.status || 500).json({
+              success: false,
+              error: 'Africa\'s Talking API error',
+              details: err.response.data
+          });
+      }
+
+      return res.status(500).json({
+          success: false,
+          error: 'Internal server error',
+          details: err.message
+      });
   }
 });
 
