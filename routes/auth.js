@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
       {
         userId: user._id,
         phone: user.phone,
-        role: user.role,
+        role: user.userType,
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
