@@ -537,4 +537,96 @@ router.post('/airtime', auth, async (req, res) => {
   }
 });
 
+router.post('/airtime/validate', async (req, res) => {
+  const { transactionId, phoneNumber, amount, currencyCode, status } = req.body;
+
+  // Log the incoming validation request
+  console.log('Airtime Validation Callback:', req.body);
+
+  // Check for required fields
+  if (!transactionId || !phoneNumber || !amount || !currencyCode) {
+      return res.status(400).json({
+          success: false,
+          error: 'Missing required fields'
+      });
+  }
+
+  // Optionally, you can validate the phone number here if needed
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+  const phoneRegex = /^(?:254|\+254|0)?([7-9]\d{8})$/;
+
+  if (!phoneRegex.test(formattedPhone)) {
+      return res.status(400).json({
+          success: false,
+          error: 'Invalid phone number format'
+      });
+  }
+
+  // If everything is valid, you can return a validation response
+  return res.json({
+      success: true,
+      message: 'Validation successful',
+      transactionId,
+      phoneNumber: formattedPhone,
+      amount,
+      currencyCode,
+      status: 'Validated'
+  });
+});
+
+router.post('/airtime/status', async (req, res) => {
+    const { transactionId, phoneNumber, status, errorMessage } = req.body;
+
+    // Log the incoming status callback
+    console.log('Airtime Status Callback:', req.body);
+
+    // Check for required fields
+    if (!transactionId || !phoneNumber || !status) {
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required fields'
+        });
+    }
+
+    // Optionally, you can perform some additional checks or logging here
+    const formattedPhone = formatPhoneNumber(phoneNumber);
+    const phoneRegex = /^(?:254|\+254|0)?([7-9]\d{8})$/;
+
+    if (!phoneRegex.test(formattedPhone)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid phone number format'
+        });
+    }
+
+    // Based on the status, update your database or perform any necessary actions
+    if (status === 'Success') {
+        // Update the transaction status in your database to successful
+        const recharge = await Recharge.findOne({ transactionId });
+        if (recharge) {
+            recharge.status = '200'; // Assuming '200' indicates success
+            await recharge.save();
+        }
+    } else {
+        // Update the transaction status to failed or other statuses
+        const recharge = await Recharge.findOne({ transactionId });
+        if (recharge) {
+            recharge.status = '400'; // Assuming '400' indicates failure
+            recharge.errorMessage = errorMessage || 'Transaction failed';
+            await recharge.save();
+        }
+    }
+
+    return res.json({
+        success: true,
+        message: 'Status processed successfully',
+        transactionId,
+        phoneNumber: formattedPhone,
+        status,
+        errorMessage
+    });
+});
+
+
+
 module.exports = router;
