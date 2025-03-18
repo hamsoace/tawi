@@ -302,20 +302,20 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
 
 
 
+// Updated statistics route
 router.get('/statistics', auth, async (req, res) => {
   try {
-    // Get current date
     const userId = req.user.id; 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    // Get monthly recharge total
+    // Fixed ObjectId creation and query structure
     const monthlyTotal = await Recharge.aggregate([
       {
         $match: {
+          userId: new mongoose.Types.ObjectId(userId), // Added 'new' keyword
           createdAt: {
-            userId: mongoose.Types.ObjectId(userId),
             $gte: startOfMonth,
             $lte: endOfMonth
           },
@@ -330,9 +330,9 @@ router.get('/statistics', auth, async (req, res) => {
       }
     ]);
 
-    // Get unique receivers this month (new clients)
+    // Fixed ObjectId creation
     const uniqueReceivers = await Recharge.distinct("receiverMsisdn", {
-      userId: mongoose.Types.ObjectId(userId),
+      userId: new mongoose.Types.ObjectId(userId), // Added 'new' keyword
       createdAt: {
         $gte: startOfMonth,
         $lte: endOfMonth
@@ -340,10 +340,11 @@ router.get('/statistics', auth, async (req, res) => {
       status: "200"
     });
 
-    // Get monthly data for the chart
+    // Added user filter to monthly data
     const monthlyData = await Recharge.aggregate([
       {
         $match: {
+          userId: new mongoose.Types.ObjectId(userId), // Added user filter
           status: "200"
         }
       },
@@ -381,14 +382,14 @@ router.get('/statistics', auth, async (req, res) => {
   }
 });
 
-// Add to routes/recharge.js
+// Updated transactions route
 router.get('/transactions', auth, async (req, res) => {
   try {
     const userId = req.user.id;
     const { page = 1, pageSize = 10, search = '', range = 'month' } = req.query;
     const skip = (page - 1) * pageSize;
 
-    // Build date range filter
+    // Date range filter
     const dateFilter = {};
     const now = new Date();
     switch (range) {
@@ -411,7 +412,7 @@ router.get('/transactions', auth, async (req, res) => {
         };
     }
 
-    // Build search filter
+    // Search filter
     const searchFilter = search ? {
       $or: [
         { senderMsisdn: { $regex: search, $options: 'i' } },
@@ -420,21 +421,20 @@ router.get('/transactions', auth, async (req, res) => {
       ]
     } : {};
 
+    // Corrected base query construction
     const baseQuery = {
-      userId: mongoose.Types.ObjectId(userId),
+      userId: new mongoose.Types.ObjectId(userId), // Added 'new' keyword
       ...dateFilter,
       ...searchFilter
     };
 
-    const transactions = await Recharge.find({
-      ...dateFilter,
-      ...searchFilter
-    })
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(pageSize));
+    // Use baseQuery in both find and count
+    const transactions = await Recharge.find(baseQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(pageSize));
 
-    const total = await Recharge.countDocuments({baseQuery});
+    const total = await Recharge.countDocuments(baseQuery); // Fixed syntax
 
     res.json({
       success: true,
@@ -450,7 +450,6 @@ router.get('/transactions', auth, async (req, res) => {
     });
   }
 });
-
 
 // Add this new route to your existing router
 router.post('/airtime', auth, async (req, res) => {
