@@ -58,6 +58,13 @@ const upload = multer({
 router.post('/', auth, async (req, res) => {
   const { receiverMsisdn, amount, servicePin } = req.body;
 
+  if (!req.user || !req.user._id) {
+    return res.status(400).json({
+      success: false,
+      error: 'User not authenticated properly'
+    });
+  }
+
   const generateTransactionId = () => {
          const timestamp = Date.now().toString();     
          const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();     
@@ -145,6 +152,7 @@ router.post('/', auth, async (req, res) => {
 
     // Save to database
     const recharge = new Recharge({
+      userId: req.user._id, // Add user reference
       senderMsisdn: formattedSenderMsisdn,
       receiverMsisdn: formattedReceiverMsisdn,
       amount: amount,
@@ -295,6 +303,7 @@ router.post('/bulk-recharge', auth, upload.single('csvFile'), async (req, res) =
 router.get('/statistics', auth, async (req, res) => {
   try {
     // Get current date
+    const userId = req.user.id; 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -304,6 +313,7 @@ router.get('/statistics', auth, async (req, res) => {
       {
         $match: {
           createdAt: {
+            userId: mongoose.Types.ObjectId(userId),
             $gte: startOfMonth,
             $lte: endOfMonth
           },
@@ -320,6 +330,7 @@ router.get('/statistics', auth, async (req, res) => {
 
     // Get unique receivers this month (new clients)
     const uniqueReceivers = await Recharge.distinct("receiverMsisdn", {
+      userId: mongoose.Types.ObjectId(userId),
       createdAt: {
         $gte: startOfMonth,
         $lte: endOfMonth
@@ -371,6 +382,7 @@ router.get('/statistics', auth, async (req, res) => {
 // Add to routes/recharge.js
 router.get('/transactions', auth, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { page = 1, pageSize = 10, search = '', range = 'month' } = req.query;
     const skip = (page - 1) * pageSize;
 
@@ -406,6 +418,12 @@ router.get('/transactions', auth, async (req, res) => {
       ]
     } : {};
 
+    const baseQuery = {
+      userId: mongoose.Types.ObjectId(userId),
+      ...dateFilter,
+      ...searchFilter
+    };
+
     const transactions = await Recharge.find({
       ...dateFilter,
       ...searchFilter
@@ -414,10 +432,7 @@ router.get('/transactions', auth, async (req, res) => {
     .skip(skip)
     .limit(parseInt(pageSize));
 
-    const total = await Recharge.countDocuments({
-      ...dateFilter,
-      ...searchFilter
-    });
+    const total = await Recharge.countDocuments({baseQuery});
 
     res.json({
       success: true,

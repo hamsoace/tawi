@@ -21,7 +21,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: ['admin', 'branchManager', 'dsa', 'retailer']
-  }
+  },
+  recharges: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Recharge'
+  }]
 });
 userSchema.pre('save', async function(next) {
   if (!this.isModified('pin')) return next();
